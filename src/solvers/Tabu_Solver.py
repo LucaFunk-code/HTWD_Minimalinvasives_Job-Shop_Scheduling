@@ -23,11 +23,11 @@ class OperationPlan:
 
 class TabuSolver:
     """
-    Einfache Tabu-Suche auf Makespan für Job-Shop-Instanzen.
+    Tabu-Suche für Job-Shop-Scheduling auf einer LiveJobCollection.
 
-    - Liest Jobs aus LiveJobCollection
-    - ignoriert Due Dates etc., Ziel ist nur Cmax-Minimierung
-    - liefert einen LiveJobCollection-Schedule zurück
+    - liest Jobs + Operationen aus der DB-Collection
+    - minimiert den Makespan (Cmax)
+    - liefert einen neuen LiveJobCollection-Schedule zurück
     """
 
     def __init__(
@@ -40,7 +40,7 @@ class TabuSolver:
         self.jobs_collection = jobs_collection
         self.rng = rng or random.Random()
 
-        # interne Repräsentation: Jobs [(machine_idx, duration), ...]
+        # interne Repräsentation: je Job eine Liste (machine_idx, duration)
         self.jobs: List[List[Tuple[int, int]]] = []
         self.machine_name_to_idx: Dict[str, int] = {}
         self.machine_idx_to_name: List[str] = []
@@ -49,21 +49,12 @@ class TabuSolver:
         self._build_internal_problem()
 
     # ------------------------------------------------------------------
-    # Problemaufbau
+    # Problem aus LiveJobCollection aufbauen
     # ------------------------------------------------------------------
     def _build_internal_problem(self) -> None:
-        """
-        Mappt die LiveJobCollection auf (job,op)->(machine_idx,duration)
-        und merkt sich den Link zurück zur JobOperation.
-        """
-
-        # sicherstellen, dass die Reihenfolge stabil ist
         try:
+            # wenn vorhanden, identische Sortierung wie beim CP-Solver
             self.jobs_collection.sort_jobs_by_id()
-        except AttributeError:
-            # falls es die Methode in deiner Version nicht gibt, ignorieren
-            pass
-        try:
             self.jobs_collection.sort_operations()
         except AttributeError:
             pass
@@ -84,33 +75,40 @@ class TabuSolver:
                     machine_counter += 1
                 m_idx = self.machine_name_to_idx[m_name]
 
-                # Dauer: wir nehmen die "normale" Dauer
-                duration = int(getattr(op, "duration", 0))
-                if duration <= 0 and hasattr(op, "sim_duration"):
-                    duration = int(op.sim_duration)
+                # Dauer: sim_duration, falls vorhanden, sonst duration
+                duration = int(getattr(op, "sim_duration", 0) or getattr(op, "duration", 0))
+                if duration <= 0:
+                    raise ValueError(f"Operation {op} hat keine positive Dauer.")
 
                 job_ops.append((m_idx, duration))
                 self.operation_lookup[(job_idx, op_idx)] = op
+
+            if not job_ops:
+                raise ValueError(f"Job {job} hat keine Operationen.")
             self.jobs.append(job_ops)
 
         if not self.jobs:
-            raise ValueError("TabuSolver: jobs_collection enthält keine Operationen.")
+            raise ValueError("TabuSolver: jobs_collection enthält keine Jobs/Operationen.")
 
         self.num_jobs = len(self.jobs)
-        self.ops_per_job = len(self.jobs[0])
         self.num_machines = len(self.machine_name_to_idx)
 
+        # Jobs dürfen unterschiedlich lang sein; Sequenzen berücksichtigen das
+        self.ops_per_job_list = [len(ops) for ops in self.jobs]
+
         self.logger.info(
-            f"TabuSolver: {self.num_jobs} Jobs, {self.ops_per_job} Ops/Job, "
+            f"TabuSolver: {self.num_jobs} Jobs, "
+            f"Operationen pro Job: {self.ops_per_job_list}, "
             f"{self.num_machines} Maschinen"
         )
 
     # ------------------------------------------------------------------
-    # Hilfsfunktionen (Tabu-Algorithmus)
+    # Grundbausteine der Tabu-Suche
     # ------------------------------------------------------------------
     def _decode_sequence(self, sequence: List[int]) -> Tuple[int, List[OperationPlan]]:
         """
         Dekodiert eine Job-Sequenz in einen Schedule (Cmax + Operationen).
+        sequence enthält nur Job-Indices.
         """
         job_next_op = [0] * self.num_jobs
         job_ready = [0] * self.num_jobs
@@ -133,13 +131,21 @@ class TabuSolver:
         return makespan, scheduled
 
     def _generate_random_start_sequence(self) -> List[int]:
-        seq = [j for j in range(self.num_jobs) for _ in range(self.ops_per_job)]
+        """
+        Erstellt eine Startsequenz: Job j kommt so oft vor, wie er Operationen hat.
+        """
+        seq: List[int] = []
+        for j, ops in enumerate(self.jobs):
+            seq.extend([j] * len(ops))
         self.rng.shuffle(seq)
         return seq
 
     def _neighbors_insertion(
         self, sequence: List[int]
     ) -> Iterable[Tuple[List[int], Tuple[int, int]]]:
+        """
+        Insertion-Nachbarschaft: verschiebe ein Element von i nach j.
+        """
         length = len(sequence)
         for i in range(length):
             for j in range(length):
@@ -184,7 +190,7 @@ class TabuSolver:
 
         self.logger.info(f"TabuSolver: Beste gefundene Lösung Cmax = {best_makespan}")
 
-        # finaler Schedule
+        # finaler Schedule bauen
         final_cmax, scheduled_ops = self._decode_sequence(best_sequence)
         assert final_cmax == best_makespan
 
@@ -200,7 +206,7 @@ class TabuSolver:
         return schedule_job_collection
 
     # ------------------------------------------------------------------
-    # Tabu-Suche (interner Algorithmus)
+    # Tabu-Suche selbst
     # ------------------------------------------------------------------
     def _tabu_search(
         self,
@@ -237,7 +243,7 @@ class TabuSolver:
 
             chosen_tuple = None
 
-            # Aspiration: Verbesserung oder besser als globale beste Lösung
+            # (1) Aspiration: Verbesserung zulassen, auch wenn tabu
             for cm, cs, mv, is_tabu in raw_candidates:
                 if is_tabu and cm >= best_makespan:
                     continue
@@ -245,7 +251,7 @@ class TabuSolver:
                     chosen_tuple = (cm, cs, mv)
                     break
 
-            # Diversifikation
+            # (2) Diversifikation
             if chosen_tuple is None:
                 iterations_without_improvement += 1
                 admissible = [
@@ -260,7 +266,7 @@ class TabuSolver:
                 chosen_tuple = self.rng.choice(limited)
 
                 if iterations_without_improvement >= patience:
-                    # springe zur besten gefundenen Nachbarlösung
+                    # springe zur besten bekannten Nachbarlösung und leere Tabu-Liste
                     best_overall = raw_candidates[0]
                     chosen_tuple = (best_overall[0], best_overall[1], best_overall[2])
                     tabu_list.clear()
