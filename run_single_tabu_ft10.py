@@ -1,5 +1,5 @@
 """
-Run a single Tabu experiment on FT10 (10x10) with ZERO command line arguments.
+Run a single Tabu experiment with shift logic (like CP solver).
 Just run:
     python run_single_tabu_ft10.py
 """
@@ -7,6 +7,7 @@ Just run:
 from __future__ import annotations
 import os
 import sys
+from decimal import Decimal
 
 # Project root in path
 project_root = os.path.dirname(os.path.abspath(__file__))
@@ -15,16 +16,20 @@ if project_root not in sys.path:
 
 
 def main():
-    print("Starting Tabu FT10 experiment…")
+    print("Starting Tabu experiment with shift logic…")
 
     # ---- Configuration (NO CLI PARAMS) ----
-    EXPERIMENT_ID = 1           # The experiment to write into
-    OVERWRITE_SCHEDULE = True   # Delete previous schedule
+    SOURCE_NAME = "Fisher and Thompson 10x10"
+    MAX_BOTTLENECK_UTILIZATION = 0.75
+    ABSOLUTE_LATENESS_RATIO = 0.5
+    INNER_TARDINESS_RATIO = 0.5
+    SIM_SIGMA = 0.1
+    SHIFT_LENGTH = 60 * 24      
+    TOTAL_SHIFT_NUMBER = 1      
     TABU_ALLOWED = 25
-    MAX_ITERS = 800
+    MAX_ITERS = 300
     PATIENCE = 40
     TOP_K = 60
-    NUM_JOBS = 10               # FT10 → always 10
 
     # Set TABU environment variables (optional but consistent)
     os.environ["TABU_SAMPLE_SIZE"] = "none"
@@ -37,34 +42,44 @@ def main():
     try:
         from src.Tabu_Experiment_Runner import run_experiment
         from src.Logger import Logger
-        from src.domain.Query import ExperimentQuery
+        from src.domain.Initializer import ExperimentInitializer
     except Exception as e:
         print("Failed to import required modules:", e)
         raise
 
-    # Delete previous schedule (optional)
-    if OVERWRITE_SCHEDULE:
-        try:
-            print(f"Overwriting existing schedule for experiment={EXPERIMENT_ID}, shift=1 …")
-            ExperimentQuery.delete_schedule_for_experiment_shift(EXPERIMENT_ID, 1)
-        except Exception as e:
-            print("Warning: Could not delete previous schedule:", e)
+    # Create experiment dynamically (like CP runner)
+    print(f"Creating experiment: {SOURCE_NAME}, util={MAX_BOTTLENECK_UTILIZATION}, sigma={SIM_SIGMA}")
+    experiment_id = ExperimentInitializer.insert_experiment(
+        source_name=SOURCE_NAME,
+        absolute_lateness_ratio=ABSOLUTE_LATENESS_RATIO,
+        inner_tardiness_ratio=INNER_TARDINESS_RATIO,
+        max_bottleneck_utilization=Decimal(f"{MAX_BOTTLENECK_UTILIZATION:.2f}"),
+        sim_sigma=SIM_SIGMA,
+        experiment_type="Tabu",
+    )
+    
+    if experiment_id is None:
+        print("Failed to create experiment!")
+        return
+    
+    print(f"Experiment created with ID: {experiment_id}")
 
     # Logger
-    logger = Logger("tabu_ft10", f"tabu_ft10_experiment_{EXPERIMENT_ID}.log")
+    logger = Logger("tabu_shifts", f"tabu_experiment_{experiment_id}.log")
 
-    # Run the FT10 Tabu Experiment
+    # Run the Tabu Experiment with shifts
     run_experiment(
-        experiment_id=EXPERIMENT_ID,
+        experiment_id=experiment_id,
+        shift_length=SHIFT_LENGTH,
+        total_shift_number=TOTAL_SHIFT_NUMBER,
         logger=logger,
-        num_jobs=NUM_JOBS,
         tabu_allowed=TABU_ALLOWED,
         max_iters=MAX_ITERS,
         patience=PATIENCE,
         top_k=TOP_K,
     )
 
-    print("✔️ Tabu FT10 run finished.")
+    print(" Tabu experiment with shifts finished.")
 
 
 if __name__ == "__main__":
