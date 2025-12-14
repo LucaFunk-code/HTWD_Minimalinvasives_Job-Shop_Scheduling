@@ -1,0 +1,2 @@
+source_name,max_bottleneck_utilization,absolute_lateness_ratio,inner_tardiness_ratio,sim_sigma,shift_length,total_shift_number,tabu_allowed,max_iters,patience,top_k,objective,w_t,w_e,w_dev
+Fisher and Thompson 10x10,0.75,0.5,0.5,0.1,1440,20,80,300,20,20,lateness_deviation,0.5,0.5,0.5

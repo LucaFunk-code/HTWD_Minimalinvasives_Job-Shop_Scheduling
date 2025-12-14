@@ -1,0 +1,5 @@
+,Improvement_Percent,Improvement_Percent,Improvement_Percent,Improvement_Percent,Improvement_Percent,Solve_Time_Seconds,Solve_Time_Seconds,Num_Operations,Num_Operations,Initial_Makespan,Final_Makespan
+,mean,std,min,max,count,sum,mean,sum,mean,mean,mean
+Experiment_ID,,,,,,,,,,,
+3,34.62,0.78,34.07,35.17,2,0.0,,0.0,,2519.5,1647.5
+5,39.33,1.43,38.32,40.34,2,151.64,75.82,319.0,159.5,2544.5,1544.0

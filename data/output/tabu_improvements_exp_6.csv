@@ -1,0 +1,3 @@
+Experiment_ID,Shift,Num_Operations,Initial_Makespan,Final_Makespan,Improvement,Improvement_Percent,Solve_Time_Seconds
+6,1,150,2100,1467,633,30.142857142857142,63.62
+6,2,168,2890,1634,1256,43.46020761245675,88.61
