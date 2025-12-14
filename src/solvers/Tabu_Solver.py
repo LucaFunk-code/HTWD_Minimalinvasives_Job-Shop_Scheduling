@@ -2,8 +2,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import List, Tuple, Iterable, Callable, Dict, Optional
-from collections import deque
+from typing import List, Tuple, Iterable, Callable, Dict, Optional, Literal
+from collections import deque, defaultdict
 import random
 
 from src.Logger import Logger
@@ -26,7 +26,7 @@ class TabuSolver:
     Tabu-Suche für Job-Shop-Scheduling auf einer LiveJobCollection.
 
     - liest Jobs + Operationen aus der DB-Collection
-    - minimiert den Makespan (Cmax)
+    - minimiert Makespan (Cmax) oder Termintreue-Zielfunktion
     - liefert einen neuen LiveJobCollection-Schedule zurück
     """
 
@@ -35,16 +35,28 @@ class TabuSolver:
         jobs_collection: LiveJobCollection,
         logger: Logger,
         rng: Optional[random.Random] = None,
+        objective: Literal["makespan", "lateness_deviation"] = "makespan",
+        w_t: float = 1.0,
+        w_e: float = 1.0,
+        w_dev: float = 0.0,
     ) -> None:
         self.logger = logger
         self.jobs_collection = jobs_collection
         self.rng = rng or random.Random()
+        self.objective = objective
+        self.w_t = w_t
+        self.w_e = w_e
+        self.w_dev = w_dev
 
         # interne Repräsentation: je Job eine Liste (machine_idx, duration)
         self.jobs: List[List[Tuple[int, int]]] = []
         self.machine_name_to_idx: Dict[str, int] = {}
         self.machine_idx_to_name: List[str] = []
         self.operation_lookup: Dict[Tuple[int, int], JobOperation] = {}
+        
+        # Due dates und original starts für Termintreue
+        self.job_due_dates: Dict[int, int] = {}
+        self.original_starts: Dict[Tuple[int, int], int] = {}
 
         self._build_internal_problem()
 
@@ -67,6 +79,11 @@ class TabuSolver:
 
         for job_idx, job in enumerate(self.jobs_collection.values()):
             job_ops: List[Tuple[int, int]] = []
+            
+            # Due date für diesen Job speichern
+            if hasattr(job, 'due_date') and job.due_date is not None:
+                self.job_due_dates[job_idx] = int(job.due_date)
+            
             for op_idx, op in enumerate(job.operations):
                 m_name = op.machine_name
                 if m_name not in self.machine_name_to_idx:
@@ -82,6 +99,10 @@ class TabuSolver:
 
                 job_ops.append((m_idx, duration))
                 self.operation_lookup[(job_idx, op_idx)] = op
+                
+                # Original start speichern falls vorhanden
+                if hasattr(op, 'start') and op.start is not None:
+                    self.original_starts[(job_idx, op_idx)] = int(op.start)
 
             if not job_ops:
                 raise ValueError(f"Job {job} hat keine Operationen.")
@@ -105,10 +126,13 @@ class TabuSolver:
     # ------------------------------------------------------------------
     # Grundbausteine der Tabu-Suche
     # ------------------------------------------------------------------
-    def _decode_sequence(self, sequence: List[int]) -> Tuple[int, List[OperationPlan]]:
+    def _decode_sequence(self, sequence: List[int]) -> Tuple[float, List[OperationPlan]]:
         """
-        Dekodiert eine Job-Sequenz in einen Schedule (Cmax + Operationen).
-        sequence enthält nur Job-Indices.
+        Dekodiert eine Job-Sequenz in einen Schedule.
+        Gibt Zielfunktionswert + Operationen zurück.
+        
+        Returns:
+            Tuple[float, List[OperationPlan]]: (objective_value, scheduled_operations)
         """
         job_next_op = [0] * self.num_jobs
         job_ready = [0] * self.num_jobs
@@ -127,8 +151,50 @@ class TabuSolver:
             job_ready[j] = op_plan.end
             machine_ready[machine_id] = op_plan.end
 
-        makespan = max(op.end for op in scheduled)
-        return makespan, scheduled
+        # Berechne Zielfunktion basierend auf Objective
+        if self.objective == "makespan":
+            makespan = max(op.end for op in scheduled)
+            return makespan, scheduled
+        else:
+            return self._calculate_lateness_objective(scheduled), scheduled
+    
+    def _calculate_lateness_objective(self, scheduled: List[OperationPlan]) -> float:
+        """
+        Berechnet die Termintreue-Zielfunktion:
+        Z = w_t * ΣTj + w_e * ΣEj + w_dev * ΣDev_i
+        
+        Tj = max{0, Cj - dj} (Tardiness of job j)
+        Ej = max{0, dj - Cj} (Earliness of job j)
+        Dev_i = |start_i - original_start_i| (Start deviation of operation i)
+        """
+        # Job completion times ermitteln
+        job_end: Dict[int, int] = defaultdict(int)
+        for op in scheduled:
+            job_end[op.job_idx] = max(job_end[op.job_idx], op.end)
+        
+        # Tardiness: Tj = max{0, Cj - dj}
+        tardiness = sum(
+            max(0, job_end[j] - self.job_due_dates.get(j, 0))
+            for j in job_end
+        )
+        
+        # Earliness: Ej = max{0, dj - Cj}
+        earliness = sum(
+            max(0, self.job_due_dates.get(j, 0) - job_end[j])
+            for j in job_end
+        )
+        
+        # Deviation: Dev_i = |start_i - original_start_i|
+        deviation = 0
+        if self.w_dev > 0 and self.original_starts:
+            for op in scheduled:
+                key = (op.job_idx, op.op_idx)
+                if key in self.original_starts:
+                    deviation += abs(op.start - self.original_starts[key])
+        
+        # Gewichtete Zielfunktion
+        objective = self.w_t * tardiness + self.w_e * earliness + self.w_dev * deviation
+        return objective
 
     def _generate_random_start_sequence(self) -> List[int]:
         """
@@ -171,15 +237,23 @@ class TabuSolver:
         max_iters: int = 800,
         patience: int = 40,
         top_k: int = 60,
-    ) -> LiveJobCollection:
+    ) -> Tuple[LiveJobCollection, float, float]:
         """
         Führt Tabu-Suche aus und gibt einen neuen LiveJobCollection-Schedule zurück.
+        
+        Returns:
+            Tuple[LiveJobCollection, float, float]: (schedule_collection, initial_objective, final_objective)
         """
         start_sequence = self._generate_random_start_sequence()
-        start_cmax, _ = self._decode_sequence(start_sequence)
-        self.logger.info(f"TabuSolver: Start-Cmax = {start_cmax}")
+        start_objective, _ = self._decode_sequence(start_sequence)
+        
+        objective_name = "Makespan" if self.objective == "makespan" else "Lateness"
+        self.logger.info(f"TabuSolver: Start-{objective_name} = {start_objective:.2f}")
+        
+        if self.objective == "lateness_deviation":
+            self.logger.info(f"TabuSolver: Weights w_t={self.w_t}, w_e={self.w_e}, w_dev={self.w_dev}")
 
-        best_sequence, best_makespan, _ = self._tabu_search(
+        best_sequence, best_objective, _ = self._tabu_search(
             start_seq=start_sequence,
             neigh_func=self._neighbors_insertion,
             tabu_allowed=tabu_allowed,
@@ -188,11 +262,11 @@ class TabuSolver:
             top_k=top_k,
         )
 
-        self.logger.info(f"TabuSolver: Beste gefundene Lösung Cmax = {best_makespan}")
+        self.logger.info(f"TabuSolver: Beste gefundene Lösung {objective_name} = {best_objective:.2f}")
 
         # finaler Schedule bauen
-        final_cmax, scheduled_ops = self._decode_sequence(best_sequence)
-        assert final_cmax == best_makespan
+        final_objective, scheduled_ops = self._decode_sequence(best_sequence)
+        assert abs(final_objective - best_objective) < 0.01, f"Objective mismatch: {final_objective} != {best_objective}"
 
         schedule_job_collection = LiveJobCollection()
         for op_plan in scheduled_ops:
@@ -203,7 +277,7 @@ class TabuSolver:
                 new_end=int(op_plan.end),
             )
 
-        return schedule_job_collection
+        return schedule_job_collection, start_objective, best_objective
 
     # ------------------------------------------------------------------
     # Tabu-Suche selbst
@@ -218,49 +292,51 @@ class TabuSolver:
         top_k: int = 60,
     ):
         current_sequence = list(start_seq)
-        current_makespan, _ = self._decode_sequence(current_sequence)
+        current_objective, _ = self._decode_sequence(current_sequence)
 
         best_sequence = list(current_sequence)
-        best_makespan = current_makespan
+        best_objective = current_objective
 
-        snapshots = [("Start", list(current_sequence), current_makespan)]
+        snapshots = [("Start", list(current_sequence), current_objective)]
         tabu_list = deque(maxlen=tabu_allowed)
         iterations_without_improvement = 0
+        
+        objective_name = "Cmax" if self.objective == "makespan" else "Objective"
 
         self.logger.info(
-            f"TabuSolver: Startsequenz Cmax = {current_makespan}, "
+            f"TabuSolver: Startsequenz {objective_name} = {current_objective:.2f}, "
             f"TabuAllowed={tabu_allowed}, MaxIters={max_iters}"
         )
 
         for iteration in range(1, max_iters + 1):
             raw_candidates = []
             for cand_seq, move in neigh_func(current_sequence):
-                cand_makespan, _ = self._decode_sequence(cand_seq)
+                cand_objective, _ = self._decode_sequence(cand_seq)
                 is_tabu = move in tabu_list
-                raw_candidates.append((cand_makespan, cand_seq, move, is_tabu))
+                raw_candidates.append((cand_objective, cand_seq, move, is_tabu))
 
             raw_candidates.sort(key=self._sort_key)
 
             chosen_tuple = None
 
             # (1) Aspiration: Verbesserung zulassen, auch wenn tabu
-            for cm, cs, mv, is_tabu in raw_candidates:
-                if is_tabu and cm >= best_makespan:
+            for obj, cs, mv, is_tabu in raw_candidates:
+                if is_tabu and obj >= best_objective:
                     continue
-                if cm < current_makespan:
-                    chosen_tuple = (cm, cs, mv)
+                if obj < current_objective:
+                    chosen_tuple = (obj, cs, mv)
                     break
 
             # (2) Diversifikation
             if chosen_tuple is None:
                 iterations_without_improvement += 1
                 admissible = [
-                    (cm, cs, mv)
-                    for (cm, cs, mv, is_tabu) in raw_candidates
-                    if (not is_tabu) or (cm < best_makespan)
+                    (obj, cs, mv)
+                    for (obj, cs, mv, is_tabu) in raw_candidates
+                    if (not is_tabu) or (obj < best_objective)
                 ]
                 if not admissible:
-                    admissible = [(cm, cs, mv) for (cm, cs, mv, _) in raw_candidates]
+                    admissible = [(obj, cs, mv) for (obj, cs, mv, _) in raw_candidates]
 
                 limited = admissible[: max(1, min(top_k, len(admissible)))]
                 chosen_tuple = self.rng.choice(limited)
@@ -274,23 +350,23 @@ class TabuSolver:
             else:
                 iterations_without_improvement = 0
 
-            chosen_makespan, chosen_sequence, chosen_move = chosen_tuple
+            chosen_objective, chosen_sequence, chosen_move = chosen_tuple
             current_sequence = list(chosen_sequence)
-            current_makespan = chosen_makespan
-            snapshots.append((f"Iter {iteration:03d}", list(current_sequence), current_makespan))
+            current_objective = chosen_objective
+            snapshots.append((f"Iter {iteration:03d}", list(current_sequence), current_objective))
 
             tabu_list.append(chosen_move)
             tabu_list.append((chosen_move[1], chosen_move[0]))
 
-            if current_makespan < best_makespan:
-                best_makespan = current_makespan
+            if current_objective < best_objective:
+                best_objective = current_objective
                 best_sequence = list(current_sequence)
 
             if iteration % 20 == 0:
                 self.logger.info(
                     f"TabuSolver Iter {iteration:03d}: "
-                    f"Cmax={current_makespan}, Best={best_makespan}, "
+                    f"{objective_name}={current_objective:.2f}, Best={best_objective:.2f}, "
                     f"TabuSize={len(tabu_list)}"
                 )
 
-        return best_sequence, best_makespan, snapshots
+        return best_sequence, best_objective, snapshots

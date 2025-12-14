@@ -1,7 +1,7 @@
 """
-Run a single Tabu experiment with shift logic (like CP solver).
+Run a single Tabu experiment with lateness deviation objective function.
 Just run:
-    python run_single_tabu_ft10.py
+    python3 run_single_tabu_lateness.py
 """
 
 from __future__ import annotations
@@ -16,28 +16,25 @@ if project_root not in sys.path:
 
 
 def main():
-    print("Starting Tabu experiment with shift logic…")
+    print("Starting Tabu experiment with lateness deviation objective…")
 
-    # ---- Configuration (NO CLI PARAMS) ----
+    # ---- Configuration ----
     SOURCE_NAME = "Fisher and Thompson 10x10"
     MAX_BOTTLENECK_UTILIZATION = 0.75
-    ABSOLUTE_LATENESS_RATIO = 0.5
-    INNER_TARDINESS_RATIO = 0.5
+    ABSOLUTE_LATENESS_RATIO = 0.5  # w_t weight for tardiness
+    INNER_TARDINESS_RATIO = 0.5    # w_dev weight for deviation
     SIM_SIGMA = 0.1
     SHIFT_LENGTH = 60 * 24      
-    TOTAL_SHIFT_NUMBER = 2    
-    TABU_ALLOWED = 100
-    MAX_ITERS = 20
-    PATIENCE = 10
-    TOP_K = 10
-
-    # Set TABU environment variables (optional but consistent)
-    os.environ["TABU_SAMPLE_SIZE"] = "none"
-    os.environ["TABU_MAX_ITERS"] = str(MAX_ITERS)
-    os.environ["TABU_PATIENCE"] = str(PATIENCE)
-    os.environ["TABU_TOP_K"] = str(TOP_K)
-    os.environ["TABU_RESTARTS"] = "1"
-    os.environ["TABU_RNG_SEED"] = "123"
+    TOTAL_SHIFT_NUMBER = 20      
+    
+    # Tabu Search parameters
+    TABU_ALLOWED = 80
+    MAX_ITERS = 800
+    PATIENCE = 20
+    TOP_K = 20
+    
+    # Objective function: "makespan" or "lateness_deviation"
+    OBJECTIVE = "lateness_deviation"
 
     try:
         from src.Tabu_Experiment_Runner import run_experiment
@@ -47,15 +44,18 @@ def main():
         print("Failed to import required modules:", e)
         raise
 
-    # Create experiment dynamically (like CP runner)
+    # Create experiment
     print(f"Creating experiment: {SOURCE_NAME}, util={MAX_BOTTLENECK_UTILIZATION}, sigma={SIM_SIGMA}")
+    print(f"Objective: {OBJECTIVE}")
+    print(f"Weights: w_t={ABSOLUTE_LATENESS_RATIO}, w_e={1.0-ABSOLUTE_LATENESS_RATIO}, w_dev={INNER_TARDINESS_RATIO}")
+    
     experiment_id = ExperimentInitializer.insert_experiment(
         source_name=SOURCE_NAME,
         absolute_lateness_ratio=ABSOLUTE_LATENESS_RATIO,
         inner_tardiness_ratio=INNER_TARDINESS_RATIO,
         max_bottleneck_utilization=Decimal(f"{MAX_BOTTLENECK_UTILIZATION:.2f}"),
         sim_sigma=SIM_SIGMA,
-        experiment_type="Tabu",
+        experiment_type="Tabu_Lateness",
     )
     
     if experiment_id is None:
@@ -65,9 +65,9 @@ def main():
     print(f"Experiment created with ID: {experiment_id}")
 
     # Logger
-    logger = Logger("tabu_shifts", f"tabu_experiment_{experiment_id}.log")
+    logger = Logger("tabu_lateness", f"tabu_lateness_experiment_{experiment_id}.log")
 
-    # Run the Tabu Experiment with shifts
+    # Run the Tabu Experiment with lateness objective
     run_experiment(
         experiment_id=experiment_id,
         shift_length=SHIFT_LENGTH,
@@ -77,9 +77,11 @@ def main():
         max_iters=MAX_ITERS,
         patience=PATIENCE,
         top_k=TOP_K,
+        objective=OBJECTIVE,
     )
 
-    print(" Tabu experiment with shifts finished.")
+    print(f"✓ Tabu experiment with {OBJECTIVE} objective finished.")
+    print(f"✓ Results saved to: data/output/tabu_improvements_exp_{experiment_id}.csv")
 
 
 if __name__ == "__main__":
