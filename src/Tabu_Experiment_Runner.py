@@ -26,6 +26,7 @@ def run_experiment(
     patience: int = 40,
     top_k: int = 60,
     objective: str = "makespan",
+    output_dir: str = "data/output",
 ) -> None:
     """
     Führt ein Tabu-Experiment mit Shift-Logik aus (analog zum CP-Solver):
@@ -161,6 +162,23 @@ def run_experiment(
             top_k=top_k,
         )
         
+        # Berechne zusätzliche Metriken für Lateness-Objective
+        initial_tardiness, initial_earliness, initial_deviation = 0, 0, 0
+        final_tardiness, final_earliness, final_deviation = 0, 0, 0
+        
+        if objective == "lateness_deviation":
+            # Berechne Initial-Metriken aus dem initialen Schedule
+            initial_metrics = solver.calculate_lateness_components(solver.best_schedule_initial)
+            initial_tardiness = initial_metrics['tardiness']
+            initial_earliness = initial_metrics['earliness']
+            initial_deviation = initial_metrics['deviation']
+            
+            # Berechne Final-Metriken aus dem besten Schedule
+            final_metrics = solver.calculate_lateness_components(solver.best_schedule)
+            final_tardiness = final_metrics['tardiness']
+            final_earliness = final_metrics['earliness']
+            final_deviation = final_metrics['deviation']
+        
         shift_solve_time = time.time() - shift_solve_start
         
         # Get memory usage after solving
@@ -175,23 +193,48 @@ def run_experiment(
             initial_col = 'Initial_Makespan'
             final_col = 'Final_Makespan'
             objective_label = "Makespan"
+            
+            makespan_improvements.append({
+                'Experiment_ID': experiment_id,
+                'Shift': shift_number,
+                'Num_Operations': num_operations,
+                initial_col: round(initial_objective, 2),
+                final_col: round(final_objective, 2),
+                'Improvement': round(initial_objective - final_objective, 2),
+                'Improvement_Percent': round(improvement_percent, 2),
+                'Solve_Time_Seconds': round(shift_solve_time, 2),
+                'Memory_MB': round(memory_after, 2),
+                'Memory_Used_MB': round(memory_used, 2)
+            })
         else:
             initial_col = 'Initial_Lateness_Deviation'
             final_col = 'Final_Lateness_Deviation'
             objective_label = "Lateness_Deviation"
-        
-        makespan_improvements.append({
-            'Experiment_ID': experiment_id,
-            'Shift': shift_number,
-            'Num_Operations': num_operations,
-            initial_col: round(initial_objective, 2),
-            final_col: round(final_objective, 2),
-            'Improvement': round(initial_objective - final_objective, 2),
-            'Improvement_Percent': round(improvement_percent, 2),
-            'Solve_Time_Seconds': round(shift_solve_time, 2),
-            'Memory_MB': round(memory_after, 2),
-            'Memory_Used_MB': round(memory_used, 2)
-        })
+            
+            # Berechne ungewichtete Termintreue (Tardiness + Earliness)
+            initial_termintreue = initial_tardiness + initial_earliness
+            final_termintreue = final_tardiness + final_earliness
+            
+            makespan_improvements.append({
+                'Experiment_ID': experiment_id,
+                'Shift': shift_number,
+                'Num_Operations': num_operations,
+                initial_col: round(initial_objective, 2),
+                final_col: round(final_objective, 2),
+                'Initial_Tardiness': round(initial_tardiness, 2),
+                'Final_Tardiness': round(final_tardiness, 2),
+                'Initial_Earliness': round(initial_earliness, 2),
+                'Final_Earliness': round(final_earliness, 2),
+                'Initial_Deviation': round(initial_deviation, 2),
+                'Final_Deviation': round(final_deviation, 2),
+                'Initial_Termintreue': round(initial_termintreue, 2),
+                'Final_Termintreue': round(final_termintreue, 2),
+                'Improvement': round(initial_objective - final_objective, 2),
+                'Improvement_Percent': round(improvement_percent, 2),
+                'Solve_Time_Seconds': round(shift_solve_time, 2),
+                'Memory_MB': round(memory_after, 2),
+                'Memory_Used_MB': round(memory_used, 2)
+            })
         
         logger.info(
             f"Shift {shift_number}: Ops={num_operations}, Initial {objective_label}={initial_objective:.2f}, "
@@ -226,7 +269,7 @@ def run_experiment(
     total_time = time.time() - total_start_time
     
     # Save makespan improvements to CSV file
-    output_dir = Path("data/output")
+    output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     
     output_file = output_dir / f"tabu_improvements_exp_{experiment_id}.csv"

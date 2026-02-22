@@ -28,8 +28,8 @@ def main():
     TOTAL_SHIFT_NUMBER = 20      
     
     # Tabu Search parameters
-    TABU_ALLOWED = 80
-    MAX_ITERS = 800
+    TABU_ALLOWED = 25
+    MAX_ITERS = 300
     PATIENCE = 20
     TOP_K = 20
     

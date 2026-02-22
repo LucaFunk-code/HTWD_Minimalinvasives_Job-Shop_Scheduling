@@ -1,0 +1,29 @@
+ERGEBNISÜBERSICHT: GEWICHTE vs. TERMINTREUE-KENNZAHLEN
+====================================================================================================
+
+ZUSAMMENFASSUNG:
+
+1. TARDINESS-REDUKTION: Erhöhung von w_t von 0.3 auf 0.6+ führt zu 7.6% weniger Verspätungen
+   → Von 242.3 auf 223.9 Minuten (Δ = -18.3 min)
+
+2. TRADE-OFF: Gleichzeitig steigt Earliness um 11.7%
+   → Von 185.5 auf 207.2 Minuten (Δ = +21.6 min)
+
+3. KORRELATIONEN: w_t zeigt starke Effekte
+   → w_t vs Tardiness: r = -0.731 (stark negativ)
+   → w_t vs Earliness: r = 0.793 (stark positiv)
+
+4. BESTE KONFIGURATIONEN:
+   → Niedrigste Tardiness: Exp 40 (w_t=0.5) → 213.3 min
+   → Niedrigste Earliness: Exp 25 (w_t=0.2) → 170.0 min
+   → Niedrigste Lateness: Exp 25 (w_t=0.2) → 412.2 min
+
+5. STABILITÄT: Hohe Reproduzierbarkeit mit Variationskoeffizienten <5%
+   → Tardiness: 5.3%
+   → Earliness: 7.3%
+   → Lateness: 1.9%
+
+6. EMPFEHLUNG:
+   → Hohe Verspätungskosten: w_t ≥ 0.6 (7-8% weniger Tardiness)
+   → Ausgeglichen: w_t = 0.5 (balancierter Trade-off)
+   → Hohe Lagerkosten: w_t ≤ 0.3 (minimale Earliness)

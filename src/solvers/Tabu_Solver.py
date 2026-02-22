@@ -195,6 +195,51 @@ class TabuSolver:
         # Gewichtete Zielfunktion
         objective = self.w_t * tardiness + self.w_e * earliness + self.w_dev * deviation
         return objective
+    
+    def calculate_lateness_components(self, scheduled: List[OperationPlan]) -> dict:
+        """
+        Berechnet die einzelnen Komponenten der Termintreue separat.
+        
+        Returns:
+            Dictionary mit 'tardiness', 'earliness', 'deviation' und 'objective'
+        """
+        if not scheduled:
+            return {'tardiness': 0, 'earliness': 0, 'deviation': 0, 'objective': 0}
+        
+        # Job completion times ermitteln
+        job_end: Dict[int, int] = defaultdict(int)
+        for op in scheduled:
+            job_end[op.job_idx] = max(job_end[op.job_idx], op.end)
+        
+        # Tardiness: Tj = max{0, Cj - dj}
+        tardiness = sum(
+            max(0, job_end[j] - self.job_due_dates.get(j, 0))
+            for j in job_end
+        )
+        
+        # Earliness: Ej = max{0, dj - Cj}
+        earliness = sum(
+            max(0, self.job_due_dates.get(j, 0) - job_end[j])
+            for j in job_end
+        )
+        
+        # Deviation: Dev_i = |start_i - original_start_i|
+        deviation = 0
+        if self.w_dev > 0 and self.original_starts:
+            for op in scheduled:
+                key = (op.job_idx, op.op_idx)
+                if key in self.original_starts:
+                    deviation += abs(op.start - self.original_starts[key])
+        
+        # Gewichtete Zielfunktion
+        objective = self.w_t * tardiness + self.w_e * earliness + self.w_dev * deviation
+        
+        return {
+            'tardiness': tardiness,
+            'earliness': earliness,
+            'deviation': deviation,
+            'objective': objective
+        }
 
     def _generate_random_start_sequence(self) -> List[int]:
         """
@@ -245,7 +290,10 @@ class TabuSolver:
             Tuple[LiveJobCollection, float, float]: (schedule_collection, initial_objective, final_objective)
         """
         start_sequence = self._generate_random_start_sequence()
-        start_objective, _ = self._decode_sequence(start_sequence)
+        start_objective, start_schedule = self._decode_sequence(start_sequence)
+        
+        # Speichere initial schedule für spätere Analyse
+        self.best_schedule_initial = start_schedule
         
         objective_name = "Makespan" if self.objective == "makespan" else "Lateness"
         self.logger.info(f"TabuSolver: Start-{objective_name} = {start_objective:.2f}")
@@ -268,6 +316,9 @@ class TabuSolver:
         final_objective, scheduled_ops = self._decode_sequence(best_sequence)
         assert abs(final_objective - best_objective) < 0.01, f"Objective mismatch: {final_objective} != {best_objective}"
 
+        # Speichere besten schedule für spätere Analyse
+        self.best_schedule = scheduled_ops
+        
         schedule_job_collection = LiveJobCollection()
         for op_plan in scheduled_ops:
             orm_op = self.operation_lookup[(op_plan.job_idx, op_plan.op_idx)]
