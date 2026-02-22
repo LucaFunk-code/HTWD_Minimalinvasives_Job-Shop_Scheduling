@@ -12,6 +12,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.patches import Rectangle
 
+# Get project root (two levels up from this script)
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
 
 def find_all_lateness_experiments(output_dir):
     """Find all experiments with Lateness Deviation data."""
@@ -73,7 +76,7 @@ def load_experiment_data(exp_id, output_dir):
 def compare_experiments(exp_ids):
     """Compare multiple Lateness experiments and create visualizations."""
     
-    output_dir = Path("data/output")
+    output_dir = PROJECT_ROOT / "data" / "output"
     
     # Load all experiment data
     print(f"Loading {len(exp_ids)} experiments...")
@@ -279,7 +282,7 @@ def compare_experiments(exp_ids):
 
 
 if __name__ == "__main__":
-    output_dir = Path("data/output")
+    output_dir = PROJECT_ROOT / "data" / "output"
     
     if len(sys.argv) > 1:
         if sys.argv[1] == "--all-lateness":

@@ -1,6 +1,6 @@
 """
-Visualize Tabu Solver results for Makespan optimization.
-Usage: python3 plot_tabu_makespan.py [experiment_id]
+Visualize Tabu Solver results for Lateness Deviation optimization.
+Usage: python3 plot_tabu_lateness.py [experiment_id]
 """
 
 import sys
@@ -9,11 +9,14 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
 
+# Get project root (two levels up from this script)
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
-def plot_makespan_results(experiment_id=None):
-    """Create comprehensive plots for Makespan optimization results."""
+
+def plot_lateness_results(experiment_id=None):
+    """Create comprehensive plots for Lateness Deviation optimization results."""
     
-    output_dir = Path("data/output")
+    output_dir = PROJECT_ROOT / "data" / "output"
     
     # Find experiment file
     if experiment_id is None:
@@ -32,28 +35,36 @@ def plot_makespan_results(experiment_id=None):
     # Load data
     df = pd.read_csv(file_path)
     
-    # Check if it's Makespan data
-    if 'Initial_Makespan' not in df.columns:
-        print("Error: This file does not contain Makespan data!")
-        print("Use plot_tabu_lateness.py for Lateness Deviation data.")
+    # Check if it's Lateness data
+    if 'Initial_Lateness_Deviation' not in df.columns:
+        print("Error: This file does not contain Lateness Deviation data!")
+        print("Use plot_tabu_makespan.py for Makespan data.")
         return
     
     experiment_id = df['Experiment_ID'].iloc[0]
     
+    # Load configuration if available
+    config_file = output_dir / f"tabu_config_exp_{experiment_id}.csv"
+    config = None
+    if config_file.exists():
+        config = pd.read_csv(config_file).iloc[0]
+    
     # Create figure with subplots
     fig = plt.figure(figsize=(16, 12))
-    fig.suptitle(f'Tabu Solver - Makespan Optimization (Experiment {experiment_id})', 
-                 fontsize=16, fontweight='bold')
+    title = f'Tabu Solver - Lateness Deviation Optimization (Experiment {experiment_id})'
+    if config is not None:
+        title += f'\nWeights: w_t={config["w_t"]:.2f}, w_e={config["w_e"]:.2f}, w_dev={config["w_dev"]:.2f}'
+    fig.suptitle(title, fontsize=16, fontweight='bold')
     
-    # 1. Initial vs Final Makespan
+    # 1. Initial vs Final Lateness Deviation
     ax1 = plt.subplot(3, 3, 1)
     x = df['Shift']
     width = 0.35
-    ax1.bar(x - width/2, df['Initial_Makespan'], width, label='Initial', alpha=0.8, color='#ff7f0e')
-    ax1.bar(x + width/2, df['Final_Makespan'], width, label='Final', alpha=0.8, color='#2ca02c')
+    ax1.bar(x - width/2, df['Initial_Lateness_Deviation'], width, label='Initial', alpha=0.8, color='#ff7f0e')
+    ax1.bar(x + width/2, df['Final_Lateness_Deviation'], width, label='Final', alpha=0.8, color='#2ca02c')
     ax1.set_xlabel('Shift')
-    ax1.set_ylabel('Makespan')
-    ax1.set_title('Initial vs Final Makespan per Shift')
+    ax1.set_ylabel('Lateness Deviation')
+    ax1.set_title('Initial vs Final Lateness Deviation per Shift')
     ax1.legend()
     ax1.grid(True, alpha=0.3)
     
@@ -75,7 +86,7 @@ def plot_makespan_results(experiment_id=None):
     ax3.bar(df['Shift'], df['Improvement'], color=colors, alpha=0.7)
     ax3.set_xlabel('Shift')
     ax3.set_ylabel('Improvement (absolute)')
-    ax3.set_title('Absolute Makespan Improvement')
+    ax3.set_title('Absolute Lateness Reduction')
     ax3.grid(True, alpha=0.3, axis='y')
     
     # 4. Number of Operations
@@ -113,7 +124,7 @@ def plot_makespan_results(experiment_id=None):
         ax6.grid(True, alpha=0.3)
         ax6.legend(loc='upper left')
     
-    # 7. Makespan Reduction Trend
+    # 7. Lateness Reduction Trend
     ax7 = plt.subplot(3, 3, 7)
     cumulative_improvement = df['Improvement'].cumsum()
     ax7.fill_between(df['Shift'], 0, cumulative_improvement, alpha=0.3, color='#2ca02c')
@@ -121,7 +132,7 @@ def plot_makespan_results(experiment_id=None):
              color='#2ca02c', markersize=8)
     ax7.set_xlabel('Shift')
     ax7.set_ylabel('Cumulative Improvement')
-    ax7.set_title('Cumulative Makespan Reduction')
+    ax7.set_title('Cumulative Lateness Reduction')
     ax7.grid(True, alpha=0.3)
     
     # 8. Statistics Summary (Text)
@@ -132,9 +143,9 @@ def plot_makespan_results(experiment_id=None):
     {'='*30}
     Total Shifts: {len(df)}
     
-    Makespan:
-      Avg Initial: {df['Initial_Makespan'].mean():.2f}
-      Avg Final:   {df['Final_Makespan'].mean():.2f}
+    Lateness Deviation:
+      Avg Initial: {df['Initial_Lateness_Deviation'].mean():.2f}
+      Avg Final:   {df['Final_Lateness_Deviation'].mean():.2f}
       Total Saved: {df['Improvement'].sum():.2f}
     
     Improvement:
@@ -153,6 +164,9 @@ def plot_makespan_results(experiment_id=None):
     """
     if 'Memory_MB' in df.columns:
         stats_text += f"\n    Memory:\n      Peak: {df['Memory_MB'].max():.2f}MB"
+    
+    if config is not None:
+        stats_text += f"\n\n    Weights:\n      w_t:   {config['w_t']:.2f}\n      w_e:   {config['w_e']:.2f}\n      w_dev: {config['w_dev']:.2f}"
     
     ax8.text(0.1, 0.9, stats_text, transform=ax8.transAxes, 
              fontsize=10, verticalalignment='top', fontfamily='monospace',
@@ -173,7 +187,7 @@ def plot_makespan_results(experiment_id=None):
     plt.tight_layout()
     
     # Save figure
-    plot_file = output_dir / f"tabu_makespan_plot_exp_{experiment_id}.png"
+    plot_file = output_dir / f"tabu_lateness_plot_exp_{experiment_id}.png"
     plt.savefig(plot_file, dpi=300, bbox_inches='tight')
     print(f"\n✓ Plot saved to: {plot_file}")
     
@@ -185,9 +199,9 @@ if __name__ == "__main__":
     if len(sys.argv) > 1:
         try:
             exp_id = int(sys.argv[1])
-            plot_makespan_results(exp_id)
+            plot_lateness_results(exp_id)
         except ValueError:
             print(f"Error: '{sys.argv[1]}' is not a valid experiment ID")
-            print("Usage: python3 plot_tabu_makespan.py [experiment_id]")
+            print("Usage: python3 plot_tabu_lateness.py [experiment_id]")
     else:
-        plot_makespan_results()
+        plot_lateness_results()

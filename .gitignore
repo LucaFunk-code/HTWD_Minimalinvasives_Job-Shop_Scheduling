@@ -162,8 +162,50 @@ Thumbs.db
 ehthumbs.db
 desktop.ini
 
+# ============================================================================
+# Project-Specific Ignores
+# ============================================================================
 
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+experiments.db
 
-*.csv
+# Output files and results
+data/output/
+data/*/experiments.db
 *.log
-# *.db
+logs/
+
+# CSV files (experiment results)
+*.csv
+# Exception: Keep example/template CSV files
+!data/basic/*.csv
+!data/examples/*.csv
+
+# Plots and visualizations
+*.png
+*.jpg
+*.jpeg
+*.pdf
+# Exception: Keep documentation images
+!docs/**/*.png
+!docs/**/*.jpg
+!README_*.png
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.swp
+*~
+
+# Jupyter Notebook outputs (already covered above but explicit)
+**/.ipynb_checkpoints/
+
+# Additional Python cache
+*.pyc
+*.pyo
+*.pyd

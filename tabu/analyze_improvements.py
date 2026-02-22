@@ -5,12 +5,16 @@ Reads improvement data and calculates statistics for a single experiment.
 from pathlib import Path
 import pandas as pd
 import sys
+import os
+
+# Get project root (two levels up from this script)
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 
 def analyze_improvements(experiment_id=None):
     """Analyze tabu improvement file for a single experiment."""
     
-    output_dir = Path("data/output")
+    output_dir = PROJECT_ROOT / "data" / "output"
     
     if experiment_id is None:
         # Find the latest experiment file

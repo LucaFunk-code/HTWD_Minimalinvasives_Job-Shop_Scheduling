@@ -46,12 +46,15 @@ Dieses Dokument beschreibt den Plan, um das Projekt für zukünftige Entwickler 
 3. `run_parallel_tabu_experiments.py` - Parallele Experimente
 4. `run_parallel_tabu_experiments.sh` - Bash-Wrapper
 
-**Analyse-Skripte:**
-5. `analyze_tabu_improvements.py` - Verbesserungs-Analyse
-6. `analyze_tabu_parameters.py` - Parameter-Analyse
-7. `compare_tabu_lateness.py` - Lateness-Vergleich
-8. `plot_tabu_makespan.py` - Makespan-Visualisierung
-9. `plot_tabu_lateness.py` - Lateness-Visualisierung
+**Analyse-Skripte (WICHTIG - BEHALTEN!):**
+5. `analyze_tabu_improvements.py` ⭐ - Makespan Improvements mit Zeiten (Initial→Final)
+6. `analyze_weight_impact.py` ⭐ - Tardiness/Earliness/Deviation Analyse
+
+**Weitere Analyse-Skripte:**
+7. `analyze_tabu_parameters.py` - Parameter-Analyse
+8. `compare_tabu_lateness.py` - Lateness-Vergleich
+9. `plot_tabu_makespan.py` - Makespan-Visualisierung
+10. `plot_tabu_lateness.py` - Lateness-Visualisierung
 
 ### 📂 Dokumentation (erweitern):
 
@@ -62,6 +65,17 @@ Dieses Dokument beschreibt den Plan, um das Projekt für zukünftige Entwickler 
 
 ## 3️⃣ Weitere Cleanup-Aufgaben
 
+### ✅ DEFINITIV BEHALTEN (User-Bestätigt):
+
+**Kern-Analyse-Tools:**
+- ⭐ `analyze_tabu_improvements.py` - Makespan Improvements mit Zeiten
+- ⭐ `analyze_weight_impact.py` - Tardiness/Earliness/Deviation Analyse
+
+**Test-Skripte:**
+- ✅ `test_scripts/00_routings_&_machines.py`
+- ✅ `test_scripts/01_jobs_machine_instances.py`
+- ✅ `test_scripts/02_sim_duration.py`
+
 ### 🗑️ Potentiell zu entfernen (nach Rücksprache):
 
 **Experimentelle/Einmalige Skripte:**
@@ -69,8 +83,9 @@ Dieses Dokument beschreibt den Plan, um das Projekt für zukünftige Entwickler 
 - `list_experiments.py` - Hilfsskript
 - `show_lateness_ranking.py` - Analyse-Hilfsskript
 
-**Alte Analyse-Skripte:**
-- `analyze_weight_impact_simple.py` (redundant zu `analyze_weight_impact.py`?)
+**Redundante Analyse-Skripte:**
+- `analyze_weight_impact_simple.py` (redundant zu `analyze_weight_impact.py` ⭐)
+- `analyze_weight_experiments.py` (ähnlich zu weight_impact?)
 - `evaluate_results.py` (generisch, unklar)
 - `generate_ergebnisuebersicht.py` (Projektseminar-spezifisch?)
 - `generate_projektdokument.py` (Projektseminar-spezifisch?)

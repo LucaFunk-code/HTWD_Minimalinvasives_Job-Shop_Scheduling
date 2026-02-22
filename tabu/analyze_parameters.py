@@ -6,11 +6,15 @@ Usage: python3 analyze_tabu_parameters.py [--all-lateness]
 """
 
 import sys
+import os
 from pathlib import Path
 import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy.interpolate import make_interp_spline
+
+# Get project root (two levels up from this script)
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 
 def find_all_lateness_experiments(output_dir):
@@ -310,7 +314,7 @@ def plot_parameter_analysis(df, output_dir):
 
 
 if __name__ == "__main__":
-    output_dir = Path("data/output")
+    output_dir = PROJECT_ROOT / "data" / "output"
     
     # Find all lateness experiments
     exp_ids = find_all_lateness_experiments(output_dir)
